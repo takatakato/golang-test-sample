@@ -1,0 +1,51 @@
+run:
+  deadline: 3m
+  issues-exit-code: 1
+  tests: false
+  skip-dirs:
+    - generated
+  skip-files:
+    - ".*\\/test_common\\.go$"
+
+output:
+  format: checkstyle # colored-line-number|line-number|json|tab|checkstyle
+  print-issued-lines: true
+  print-linter-name: true
+
+linters:
+  disable-all: true
+  enable:
+    ## default
+    - govet
+    - errcheck
+    - staticcheck
+    # - unused
+    # - gosimple
+    # - structcheck
+    # - varcheck
+    # - ineffassign
+    # - deadcode
+    # - typecheck
+    ## default disabled
+    - golint
+    - gosec
+
+linters-settings:
+  govet:
+    check-shadowing: false
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  golint:
+    min-confidence: 1.0
+
+issues:
+  exclude-rules:
+    # example
+    # - linters:
+    #     - staticcheck
+    #   text: "SA4010:"
+    # - path: internal/database/database.go
+    #   text: "G101:"
+    #   linters:
+    #     - gosec

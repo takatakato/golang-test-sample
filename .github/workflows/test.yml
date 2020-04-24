@@ -1,0 +1,112 @@
+name: Test and Build
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+
+env:
+  GO111MODULE: "on"
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ '1.13' ]
+    steps:
+    - name: Set up Go ${{ matrix.go }}
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - name: checkout
+      uses: actions/checkout@v2
+    - name: cache
+      uses: actions/cache@v1
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - name: Run golangci-lint
+      run: |
+        curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.24.0
+        $(go env GOPATH)/bin/golangci-lint run ./... 2>&1 | tee golangci-lint.xml && if [ ${PIPESTATUS[0]} -ne 0 ]; then exit 1; fi
+      continue-on-error: false
+    - name: upload lint report
+      uses: actions/upload-artifact@v1
+      with:
+        name: golangci
+        path: ./golangci-lint.xml
+      if: always()
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ '1.13' ]
+    steps:
+    - name: Set up Go ${{ matrix.go }}
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - name: checkout
+      uses: actions/checkout@v2
+    - name: cache
+      uses: actions/cache@v1
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - name: test
+      run: |
+        go test -cover $(go list ./... |grep -v 'vendor') -coverprofile=coverage.out -p 1 -count=1 -json 2>&1 | tee test-report.json && if [ ${PIPESTATUS[0]} -ne 0 ]; then exit 1; fi
+        go tool cover -html=coverage.out -o coverage.html
+    - name: upload coverage report
+      uses: actions/upload-artifact@v1
+      with:
+        name: coverage-out
+        path: ./coverage.out
+      if: always()
+    - name: upload coverage report html
+      uses: actions/upload-artifact@v1
+      with:
+        name: coverage-html
+        path: ./coverage.html
+      if: always()
+
+  sonar:
+    name: Sonar Scan
+    runs-on: ubuntu-latest
+    needs: 
+      - check
+      - test
+    if: always()
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - name: Download lint report
+      uses: actions/download-artifact@v1
+      with:
+        name: golangci
+    - shell: bash
+      run: |
+        mv golangci/golangci-lint.xml .
+    - name: Download coverage report
+      uses: actions/download-artifact@v1
+      with:
+        name: coverage-out
+    - shell: bash
+      run: |
+        mv coverage-out/coverage.out .
+    - name: SonarCloud Scan
+      uses: sonarsource/sonarcloud-github-action@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
