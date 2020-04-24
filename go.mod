@@ -1,4 +1,4 @@
-module github.com/takatakato/golang-test-sample/src
+module github.com/takatakato/golang-test-sample
 
 go 1.13
 

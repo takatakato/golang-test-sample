@@ -2,3 +2,4 @@ vendor
 coverage.out
 test-report.json
 golangci-lint.xml
+coverage.html

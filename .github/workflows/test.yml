@@ -1,26 +1,58 @@
-name: Test and Build
+# ワークフロー名
+name: Test
 
+# ワークフローを実行するトリガー
 on:
+  # pushイベントで実行するときの条件 https://help.github.com/en/actions/reference/events-that-trigger-workflows#webhook-events
   push:
+    # (master に push したら)
     branches:
     - master
+  # パスを条件に追加
+    # paths:
+    #   - 'src/*/*.ts'
+    #   - '!*.js'
+  # tagを条件に追加
+    # tags:        
+    #   - app             # Push events to app tag
+    #   - release.*           # Push events to release.v1.0, release.v1.1
+  # (PR が追加、更新したら)
   pull_request:
 
+#===============================
+# ワークフローで実行するジョブ
+#===============================
+# グローバル環境変数
 env:
   GO111MODULE: "on"
 
 jobs:
+  # ジョブID
   check:
+    # ジョブ名
     name: Check
-    runs-on: ubuntu-latest
+
+    # ジョブを実行する仮想環境
+    runs-on: ubuntu-latest # https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners#environment-variables
+
+    # ジョブを実行する環境のバリエーション
     strategy:
       matrix:
         go: [ '1.13' ]
+
+    # ジョブ内で実行するタスク（ステップ）
     steps:
+#===============================
+# Go の実行環境を準備するときのActions(実行環境のActions + ソースコードのチェックアウト)
+#===============================
+      # ステップ名
     - name: Set up Go ${{ matrix.go }}
+      # DockerHubで公開されているDockerイメージ or GitHubのパブリックリポジトリ
       uses: actions/setup-go@v1
-      with:
+      # Actions に必要な入力要素 GitHubのReadme参照
+      with: 
         go-version: ${{ matrix.go }}
+      # ステップID
       id: go
     - name: checkout
       uses: actions/checkout@v2
@@ -31,30 +63,49 @@ jobs:
         key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
         restore-keys: |
           ${{ runner.os }}-go-
+#===============================
+
+#===============================
+# sh で自由に定義
+#===============================
     - name: Run golangci-lint
       run: |
         curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.24.0
-        $(go env GOPATH)/bin/golangci-lint run ./... 2>&1 | tee golangci-lint.xml && if [ ${PIPESTATUS[0]} -ne 0 ]; then exit 1; fi
-      continue-on-error: false
+        $(go env GOPATH)/bin/golangci-lint run ./... 2>&1 | tee golangci-lint.out && if [ ${PIPESTATUS[0]} -ne 0 ]; then exit 1; fi
+      continue-on-error: false # error 時もジョブを継続
+#===============================
+
+#===============================
+# ファイルをアップロードするときのActions(履歴からダウンロードしたり、後続ジョブで利用したり)
+#===============================
     - name: upload lint report
       uses: actions/upload-artifact@v1
       with:
         name: golangci
-        path: ./golangci-lint.xml
-      if: always()
+        path: ./golangci-lint.out
+      if: always() # 常時実行
+#===============================
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: [ '1.13' ]
+    # ジョブ内で使うコンテナ
+    container:
+      image: golang:1.14.4-alpine3.12
+      env:
+        GO111MODULE: "on"
+        CGO_ENABLED: 0
+    # ジョブで利用するサービスを定義 (テストDB等)
+    services:
+      mysql:
+        image: mysql:5.7
+        ports:
+          - 3306:3306
+        options: --health-cmd "mysqladmin ping -h localhost" --health-interval 20s --health-timeout 10s --health-retries 10
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_DATABASE: root
     steps:
-    - name: Set up Go ${{ matrix.go }}
-      uses: actions/setup-go@v1
-      with:
-        go-version: ${{ matrix.go }}
-      id: go
     - name: checkout
       uses: actions/checkout@v2
     - name: cache
@@ -66,8 +117,11 @@ jobs:
           ${{ runner.os }}-go-
     - name: test
       run: |
-        go test -cover $(go list ./... |grep -v 'vendor') -coverprofile=coverage.out -p 1 -count=1 -json 2>&1 | tee test-report.json && if [ ${PIPESTATUS[0]} -ne 0 ]; then exit 1; fi
+        go test -cover $(go list ./... |grep -v 'vendor') -coverprofile=coverage.out -p 1 -count=1
+    - name: coverage
+      run: |
         go tool cover -html=coverage.out -o coverage.html
+      if: always()
     - name: upload coverage report
       uses: actions/upload-artifact@v1
       with:
@@ -80,33 +134,3 @@ jobs:
         name: coverage-html
         path: ./coverage.html
       if: always()
-
-  sonar:
-    name: Sonar Scan
-    runs-on: ubuntu-latest
-    needs: 
-      - check
-      - test
-    if: always()
-    steps:
-    - name: checkout
-      uses: actions/checkout@v2
-    - name: Download lint report
-      uses: actions/download-artifact@v1
-      with:
-        name: golangci
-    - shell: bash
-      run: |
-        mv golangci/golangci-lint.xml .
-    - name: Download coverage report
-      uses: actions/download-artifact@v1
-      with:
-        name: coverage-out
-    - shell: bash
-      run: |
-        mv coverage-out/coverage.out .
-    - name: SonarCloud Scan
-      uses: sonarsource/sonarcloud-github-action@master
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}    
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
