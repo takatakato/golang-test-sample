@@ -19,13 +19,13 @@ func exampleDuplicate(code string) (int, error) {
 	return 0, errors.New("code must be hoge")
 }
 
-// func lintNG(bar int) int {
-// 	if bar > 0 {
-// 		return 123
-// 	} else {
-// 		return 456
-// 	}
-// }
+func lintNG(bar int) int {
+	if bar > 0 {
+		return 123
+	} else {
+		return 456
+	}
+}
 
 func sum(a, b int) int {
 	return a + b
