@@ -157,5 +157,6 @@ jobs:
       - name: Lint Code Base
         uses: docker://github/super-linter:latest
         env:
+          RUN_LOCAL: true
           VALIDATE_ALL_CODEBASE: false
           VALIDATE_GO: true
